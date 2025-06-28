@@ -1,70 +1,36 @@
-'''
-This program uses tkinter and matplotlib to visualize a simulation of celestial objects in orbit around each other.
-I used physics and Euler's method to simulate trajectories.
-The user can enter the initial conditions (position and velocity) for both 'planets' and 'satellites'.
-'Planets' can be any massive body and 'satellites' are assumed to have no mass.
-All planets are assumed to be point masses.
-
-The settings are configured for the Moon orbiting the Earth, but they can be changed in the bottom frame.
-Increase the timestep for faster results, and decrease the timestep for more accurate results.
-
-Here are the initial conditions for the moon orbiting Earth:
-  Earth position: (0,0)
-  Earth velocity: (0,0)
-  Earth mass: 1
-  Moon position: (384400,0)
-  Moon velocity: (0,1000)
-  Moon mass: .0123
-
-If you want to try simulating the planets orbiting the Sun, you will have to change the scale and timestep in the bottom frame.
-'''
-
 from tkinter import *
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 import math as m
+import numpy as np
 import time
 
 day = 86400
+earth_mass = 5.97219 * (10**24)
 dt = 0
-G = 0
+G = 6.67430 * (10**-11)
 run_time = 0
 scale = 400000
 keep_decimals_velocity = 3
 keep_decimals_position = 1
 
+color_map = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+
 class celestial_body:
   def __init__(self, mass, posX, posY, velX, velY):
-    self.mass = mass
-    self.posX = posX
-    self.posY = posY
-    self.velX = velX
-    self.velY = velY
+      self.mass = mass
+      self.pos = np.array([posX, posY])
+      self.vel = np.array([velX, velY])
   
   def set_pos(self):
-    self.posX += self.velX*dt
-    self.posY += self.velY*dt
-
-  def get_x_dist(self, celestial_body):
-    return (self.posX-celestial_body.posX)
-  
-  def get_y_dist(self, celestial_body):
-    return (self.posY-celestial_body.posY)
-
-  def get_distance(self, celestial_body):
-    x = self.posX-celestial_body.posX
-    y = self.posY-celestial_body.posY
-    return m.sqrt(x*x + y*y)
+      self.pos += self.vel * dt
 
   def set_vel(self, celestial_body):
-    r = self.get_distance(celestial_body)
-    acc = (G*celestial_body.mass)/(pow(r,2))
-
-    accX = -acc*(self.get_x_dist(celestial_body)/r)
-    accY = -acc*(self.get_y_dist(celestial_body)/r)
-
-    self.velX += accX*dt
-    self.velY += accY*dt
+      r = np.linalg.norm(self.pos - celestial_body.pos)
+      acc = (G * celestial_body.mass) / (r**2)
+      direction = (celestial_body.pos - self.pos) / r
+      acceleration = acc * direction
+      self.vel += acceleration * dt
 
 class Orbit_GUI:
     def __init__(self, master):
@@ -96,6 +62,7 @@ class Orbit_GUI:
         self.canvas.draw()
         self.canvas.get_tk_widget().pack()
 
+        # create planets and satellites buttons
         self.add_planet_button = Button(self.planets_frame, text='Add Body', command=self.add_celestial_body)
         self.add_planet_button.pack()
 
@@ -109,7 +76,7 @@ class Orbit_GUI:
         self.control_buttons_frame.pack(side=LEFT, fill=Y)
 
         # initialize constant entry frame widgets
-        self.dt_label = Label(self.constant_entry_frame, text='Timestep (days): ')
+        self.dt_label = Label(self.constant_entry_frame, text='dt (days): ')
         self.dt_entry = Entry(self.constant_entry_frame, width=6)
         self.dt_entry.insert(0,'1')
         self.dt_label.grid(row=0, column=0)
@@ -253,11 +220,15 @@ class Orbit_GUI:
         # reset bodies list and clear graph
         self.celestial_bodies = []
         self.satellite_bodies = []
-        self.main_graph.cla()
+
+        x_positions = []
+        y_positions = []
+        colors = []
 
         # go through each celestial body in the planets frame
         # add them to the celestial bodies list
         # and plot them on the graph
+        index = 0
         for body_frame_data in self.planets_frame.winfo_children():
             widgets = body_frame_data.winfo_children()
             if len(widgets) > 0:
@@ -265,7 +236,7 @@ class Orbit_GUI:
                 velocity_data = widgets[3].winfo_children()
                 mass_data = widgets[4].winfo_children()
                 if mass_data[1].get() != '' and position_data[1].get() != '' and position_data[3].get() != '' and velocity_data[1].get() != '' and velocity_data[3].get() != '':
-                    temp_mass = float(mass_data[1].get()) * 5.97219 * (10**24)
+                    temp_mass = float(mass_data[1].get()) * earth_mass
                     temp_x_pos = float(position_data[1].get()) * 1000
                     temp_y_pos = float(position_data[3].get()) * 1000
                     temp_x_vel = float(velocity_data[1].get())
@@ -273,11 +244,12 @@ class Orbit_GUI:
                     temp_celestial_body = celestial_body(temp_mass,temp_x_pos,temp_y_pos,temp_x_vel,temp_y_vel)
                     self.celestial_bodies.append(temp_celestial_body)
 
-                    self.main_graph.plot(temp_x_pos, temp_y_pos, marker="o")
-                    self.main_graph.set_xlim(-1*scale,scale)
-                    self.main_graph.set_ylim(-1*scale,scale)
-                    self.canvas.draw()
-
+                    x_positions.append(temp_x_pos)
+                    y_positions.append(temp_y_pos)
+                    colors.append(color_map[index % len(color_map)])
+                    index += 1
+        
+        index = 0
         for satellite_frame_data in self.satellites_frame.winfo_children():
             widgets = satellite_frame_data.winfo_children()
             if len(widgets) > 0:
@@ -292,17 +264,27 @@ class Orbit_GUI:
                     temp_celestial_body = celestial_body(temp_mass,temp_x_pos,temp_y_pos,temp_x_vel,temp_y_vel)
                     self.satellite_bodies.append(temp_celestial_body)
 
-                    self.main_graph.plot(temp_x_pos, temp_y_pos, marker="o")
-                    self.main_graph.set_xlim(-1*scale,scale)
-                    self.main_graph.set_ylim(-1*scale,scale)
-                    self.canvas.draw()
+                    x_positions.append(temp_x_pos)
+                    y_positions.append(temp_y_pos)
+                    colors.append(color_map[(index + len(self.celestial_bodies)) % len(color_map)])
+                    index += 1
+
+        self.main_graph.cla()
+        self.main_graph.scatter(x_positions, y_positions, c=colors)
+        self.main_graph.set_xlim(-1 * scale, scale)
+        self.main_graph.set_ylim(-1 * scale, scale)
+        self.canvas.draw()
 
     def run_simulation(self):
+      t = time.time()
       self.update_specs()
 
       for i in range(run_time):
           self.step_trajectories()
           self.master.update_idletasks()
+          self.master.update()
+
+      print('Simulation time: ', time.time() - t)
 
     def step_trajectories(self):
        self.update_specs()
@@ -322,9 +304,9 @@ class Orbit_GUI:
 
           body = self.celestial_bodies[index]
           velocity_data[1].delete(0,END)
-          velocity_data[1].insert(0, round(body.velX, keep_decimals_velocity))
+          velocity_data[1].insert(0, round(body.vel[0], keep_decimals_velocity))
           velocity_data[3].delete(0,END)
-          velocity_data[3].insert(0, round(body.velY, keep_decimals_velocity))
+          velocity_data[3].insert(0, round(body.vel[1], keep_decimals_velocity))
 
       for index in range(len(self.satellite_bodies)):
           for i in range(len(self.celestial_bodies)):
@@ -336,12 +318,15 @@ class Orbit_GUI:
 
           body = self.satellite_bodies[index]
           velocity_data[1].delete(0,END)
-          velocity_data[1].insert(0, round(body.velX, keep_decimals_velocity))
+          velocity_data[1].insert(0, round(body.vel[0], keep_decimals_velocity))
           velocity_data[3].delete(0,END)
-          velocity_data[3].insert(0, round(body.velY, keep_decimals_velocity))
+          velocity_data[3].insert(0, round(body.vel[1], keep_decimals_velocity))
 
     def graph_positions(self):
-        self.main_graph.cla()
+        x_positions = []
+        y_positions = []
+        colors = []
+
         for index in range(len(self.celestial_bodies)):
             self.celestial_bodies[index].set_pos()
             body = self.celestial_bodies[index]
@@ -350,14 +335,13 @@ class Orbit_GUI:
             position_data = widgets[1].winfo_children()
 
             position_data[1].delete(0,END)
-            position_data[1].insert(0, round(body.posX/1000, keep_decimals_position))
+            position_data[1].insert(0, round(body.pos[0]/1000, keep_decimals_position))
             position_data[3].delete(0,END)
-            position_data[3].insert(0, round(body.posY/1000, keep_decimals_position))
+            position_data[3].insert(0, round(body.pos[1]/1000, keep_decimals_position))
 
-            self.main_graph.plot(body.posX, body.posY, marker="o")
-            self.main_graph.set_xlim(-1*scale,scale)
-            self.main_graph.set_ylim(-1*scale,scale)
-            self.canvas.draw()
+            x_positions.append(body.pos[0])
+            y_positions.append(body.pos[1])
+            colors.append(color_map[index % len(color_map)])
 
         for index in range(len(self.satellite_bodies)):
             self.satellite_bodies[index].set_pos()
@@ -367,14 +351,19 @@ class Orbit_GUI:
             position_data = widgets[1].winfo_children()
 
             position_data[1].delete(0,END)
-            position_data[1].insert(0, round(body.posX/1000, keep_decimals_position))
+            position_data[1].insert(0, round(body.pos[0]/1000, keep_decimals_position))
             position_data[3].delete(0,END)
-            position_data[3].insert(0, round(body.posY/1000, keep_decimals_position))
+            position_data[3].insert(0, round(body.pos[1]/1000, keep_decimals_position))
 
-            self.main_graph.plot(body.posX, body.posY, marker="o")
-            self.main_graph.set_xlim(-1*scale,scale)
-            self.main_graph.set_ylim(-1*scale,scale)
-            self.canvas.draw()
+            x_positions.append(body.pos[0])
+            y_positions.append(body.pos[1])
+            colors.append(color_map[(index + len(self.celestial_bodies)) % len(color_map)])
+
+        self.main_graph.cla()
+        self.main_graph.scatter(x_positions, y_positions, c=colors)
+        self.main_graph.set_xlim(-1 * scale, scale)
+        self.main_graph.set_ylim(-1 * scale, scale)
+        self.canvas.draw()
 
     def update_specs(self):
         global dt
